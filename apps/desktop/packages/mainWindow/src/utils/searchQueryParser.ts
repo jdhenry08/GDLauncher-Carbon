@@ -17,6 +17,7 @@ export type ParsedItem =
       id: string
     }
   | { type: "gdlauncher_share"; shareCode: string }
+  | { type: "gdlauncher_launch"; instanceId: number }
   | { type: "gdlauncher_share_link"; shareCode: string }
 
 export interface ParsedQuery {
@@ -41,6 +42,9 @@ const MODRINTH_PROTOCOL_REGEX =
 
 // GDLauncher share protocol: gdlauncher://share/ABC123
 const GDLAUNCHER_SHARE_PROTOCOL_REGEX = /^gdlauncher:\/\/share\/([a-zA-Z0-9]+)/
+
+// Launch a locally installed instance by its numeric ID.
+const GDLAUNCHER_LAUNCH_PROTOCOL_REGEX = /^gdlauncher:\/\/launch\/([1-9]\d*)\/?$/i
 
 // GDLauncher share link: gdl.gg/i/ABC123 or gdlauncher.com/instance-share/ABC123
 const GDLAUNCHER_SHARE_LINK_REGEX =
@@ -139,6 +143,14 @@ function tryParseUrl(input: string): ParsedItem | null {
  * Try to parse input as a custom protocol (curseforge://, modrinth://, or gdlauncher://)
  */
 function tryParseProtocol(input: string): ParsedItem | null {
+  const launchMatch = GDLAUNCHER_LAUNCH_PROTOCOL_REGEX.exec(input)
+  if (launchMatch) {
+    const instanceId = Number(launchMatch[1])
+    if (Number.isSafeInteger(instanceId)) {
+      return { type: "gdlauncher_launch", instanceId }
+    }
+  }
+
   // Try GDLauncher share protocol
   const gdlMatch = GDLAUNCHER_SHARE_PROTOCOL_REGEX.exec(input)
   if (gdlMatch) {
