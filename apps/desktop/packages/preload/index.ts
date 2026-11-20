@@ -37,5 +37,6 @@ contextBridge.exposeInMainWorld(
   "onProtocolUrl",
   (cb: (url: string) => void) => {
     ipcRenderer.on("protocol-url", (_event, url) => cb(url))
+    ipcRenderer.send("protocol-handler-ready")
   }
 )

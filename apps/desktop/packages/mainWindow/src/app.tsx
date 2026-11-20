@@ -9,6 +9,7 @@ import {
 import { useLocation } from "@solidjs/router"
 import initThemes from "./utils/theme"
 import { rspc } from "@/utils/rspcClient"
+import { useGlobalStore } from "./components/GlobalStoreContext"
 import { useModal } from "./managers/ModalsManager"
 import { useGDNavigate } from "./managers/NavigationManager"
 import { parseSearchQuery } from "./utils/searchQueryParser"
@@ -24,6 +25,10 @@ interface Props {
 const App = (props: Props) => {
   const [runItOnce, setRunItOnce] = createSignal(true)
   const modalsContext = useModal()
+  const globalStore = useGlobalStore()
+  const launchInstanceMutation = rspc.createMutation(() => ({
+    mutationKey: ["instance.launchInstance"]
+  }))
   const navigate = useGDNavigate()
   const currentRoute = useLocation()
 
@@ -67,6 +72,20 @@ const App = (props: Props) => {
           { name: "sharePreview" },
           { shareCode: firstItem.shareCode }
         )
+      } else if (firstItem.type === "gdlauncher_launch") {
+        const accountStatus = globalStore.currentlySelectedAccount()?.status
+        if (accountStatus === "expired" || accountStatus === "invalid") {
+          modalsContext?.openModal(
+            { name: "accountExpired" },
+            { id: firstItem.instanceId }
+          )
+          return
+        }
+        // The backend validates instance existence and rejects duplicate launches.
+        launchInstanceMutation.mutate({
+          id: firstItem.instanceId,
+          skipMemoryCheck: false
+        })
       } else {
         navigate.navigate(`/search?q=${encodeURIComponent(url)}`)
       }

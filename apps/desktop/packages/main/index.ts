@@ -827,6 +827,15 @@ let isSpawningWindow = false
 
 // Queue for protocol URLs received before window is ready
 let pendingProtocolUrl: string | null = null
+let protocolHandlerReady = false
+
+function dispatchProtocolUrl(url: string) {
+  if (protocolHandlerReady && win && !win.isDestroyed()) {
+    win.webContents.send("protocol-url", url)
+  } else {
+    pendingProtocolUrl = url
+  }
+}
 
 // Helper to check if a URL is a supported protocol
 const isSupportedProtocol = (url: string) =>
@@ -861,6 +870,7 @@ async function createWindow(): Promise<BrowserWindow> {
     win = null
   }
 
+  protocolHandlerReady = false
   win = new BrowserWindow({
     title: "GDLauncher Carbon",
     minHeight,
@@ -1041,16 +1051,6 @@ async function createWindow(): Promise<BrowserWindow> {
     isSpawningWindow = false
     console.log("Window is ready to show")
 
-    // Send any pending protocol URL that was received before window was ready
-    if (pendingProtocolUrl) {
-      console.log("Sending pending protocol URL:", pendingProtocolUrl)
-      // Small delay to ensure renderer is fully initialized
-      setTimeout(() => {
-        win?.webContents.send("protocol-url", pendingProtocolUrl)
-        pendingProtocolUrl = null
-      }, 500)
-    }
-
     if (import.meta.env.DEV && !__SHOWCASE_MODE__) {
       win?.webContents.openDevTools()
     }
@@ -1064,6 +1064,16 @@ async function createWindow(): Promise<BrowserWindow> {
 
   return win
 }
+
+// Deliver queued links only after the renderer has registered its listener.
+ipcMain.on("protocol-handler-ready", (event) => {
+  if (!win || event.sender !== win.webContents) return
+  protocolHandlerReady = true
+  if (pendingProtocolUrl) {
+    event.sender.send("protocol-url", pendingProtocolUrl)
+    pendingProtocolUrl = null
+  }
+})
 
 // Handlers
 ipcMain.handle("relaunch", async () => {
@@ -1533,12 +1543,12 @@ app.whenReady().then(async () => {
       // Forward protocol URL if present
       if (protocolUrl) {
         console.log("Protocol URL received via second-instance:", protocolUrl)
-        win.webContents.send("protocol-url", protocolUrl)
+        dispatchProtocolUrl(protocolUrl)
       }
     } else {
       // Store URL and create window
       if (protocolUrl) {
-        pendingProtocolUrl = protocolUrl
+        dispatchProtocolUrl(protocolUrl)
       }
       createWindow()
     }
@@ -1636,12 +1646,12 @@ app.on("open-url", (event, url) => {
       if (win.isMinimized()) win.restore()
       win.focus()
 
-      // Forward the protocol URL to the renderer process
-      win.webContents.send("protocol-url", url)
+      // Forward or queue until the renderer has registered its listener.
+      dispatchProtocolUrl(url)
     } else {
       // Window not ready yet, store the URL for later
       console.log("Window not ready, storing protocol URL for later")
-      pendingProtocolUrl = url
+      dispatchProtocolUrl(url)
     }
   }
 })
